@@ -73,13 +73,13 @@ jobs:
         # Close the group structure
         new_group+="\n          ]\n        }"
 
-        # Add comma if not the first group
-        if grep -q '"navigation": \[[^]' mint.json; then
-          new_group=",$new_group"
+        # Add comma if navigation section is not empty
+        if grep -q '"navigation": \[.' mint.json; then
+          new_group=",${new_group}"
         fi
 
         # Insert the new group into the navigation section
-        sed -i '/"navigation": \[/a\\t'"$new_group" mint.json
+        sed -i '/"navigation": \[/a\        '"$new_group" mint.json
 
         cd ..
         
