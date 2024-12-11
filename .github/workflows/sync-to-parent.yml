@@ -1,0 +1,95 @@
+name: Sync OpenAPI Spec and MDX Files
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checkout the child repo
+    - name: Checkout child repo
+      uses: actions/checkout@v3
+
+    # Find and sync .mdx files
+    - name: Sync .mdx files to parent repo
+      id: sync-mdx
+      run: |
+        mkdir -p api-reference/audit
+        if compgen -G "./**/*.mdx" > /dev/null; then
+          find . -name "*.mdx" -exec cp {} api-reference/audit/ \;
+        fi
+
+    # Clone the parent repository
+    - name: Clone parent repository
+      run: |
+        git clone https://x-access-token:${{ secrets.PARENT_REPO_TOKEN }}@github.com/ruhanponnada/hpe.git parent-repo
+        cd parent-repo
+        mkdir -p api-reference/audit
+        echo "Ensured that the 'api-reference/audit' folder exists."
+        cd ..
+
+    # Copy OpenAPI spec and MDX files to parent repo
+    - name: Copy files to parent repository
+      run: |
+        cp ./openapi.json ./parent-repo/api-reference/audit/openapi.json
+        cp ./api-reference/audit/*.mdx ./parent-repo/api-reference/audit/ || true
+
+    # Update mint.json
+    - name: Update mint.json in parent repository
+      run: |
+        cd parent-repo
+
+        # Add the new tab entry
+        new_tab=',{
+          "name": "Audit Logs",
+          "url": "api-reference/audit-logs",
+          "openapi": "/audit-api.json"
+        }'
+        sed -i '/"tabs": \[/a\\t$new_tab' mint.json
+
+        # Initialize the navigation group with proper formatting
+        new_group='{
+          "group": "Audit Logs",
+          "pages": ['
+
+        # Add .mdx files to the group with proper formatting
+        first_file=true
+        for mdx in ./api-reference/audit/*.mdx; do
+          if [ -f "$mdx" ]; then
+            file_path="api-reference/audit/$(basename "$mdx" .mdx)"
+            if [ "$first_file" = true ]; then
+              new_group+="\"$file_path\""
+              first_file=false
+            else
+              new_group+=",\n            \"$file_path\""
+            fi
+          fi
+        done
+
+        # Close the group structure
+        new_group+="\n          ]\n        }"
+
+        # Add comma if not the first group
+        if grep -q '"navigation": \[[^]' mint.json; then
+          new_group=",$new_group"
+        fi
+
+        # Insert the new group into the navigation section
+        sed -i '/"navigation": \[/a\\t'"$new_group" mint.json
+
+        cd ..
+        
+
+    # Commit and push changes
+    - name: Commit and push to parent repository
+      run: |
+        cd parent-repo
+        git config user.name "GitHub Action"
+        git config user.email "action@github.com"
+        git add .
+        git commit -m "Sync OpenAPI spec and MDX files with updated mint.json"
+        git push origin main
